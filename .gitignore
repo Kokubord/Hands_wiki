@@ -1,0 +1,8 @@
+# Obsidian — estado local / cache (alinhado ao fluxo vault + Git)
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.obsidian/cache/
+
+# SO / editor
+Thumbs.db
+.DS_Store
