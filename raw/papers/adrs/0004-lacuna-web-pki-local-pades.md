@@ -1,4 +1,4 @@
-<!-- wiki-ingest: synced from clinicagestor/docs/adr/0004-lacuna-web-pki-local-pades.md at 2026-05-09T17:45:44.518Z — edit upstream in monorepo, not here -->
+<!-- wiki-ingest: synced from clinicagestor/docs/adr/0004-lacuna-web-pki-local-pades.md at 2026-05-09T17:47:18.995Z — edit upstream in monorepo, not here -->
 
 # ADR-0004 — Assinatura legal Lacuna: Web PKI SDK (client-side) + PAdES-B-B local (server-side)
 

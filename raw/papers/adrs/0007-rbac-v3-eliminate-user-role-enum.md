@@ -1,4 +1,4 @@
-<!-- wiki-ingest: synced from clinicagestor/docs/adr/0007-rbac-v3-eliminate-user-role-enum.md at 2026-05-09T17:45:44.518Z — edit upstream in monorepo, not here -->
+<!-- wiki-ingest: synced from clinicagestor/docs/adr/0007-rbac-v3-eliminate-user-role-enum.md at 2026-05-09T17:47:18.998Z — edit upstream in monorepo, not here -->
 
 # ADR-0007 — RBAC v3: eliminação do enum `UserRole` (OWNER/ADMIN/STAFF) a favor do eixo único `ClinicRole`
 

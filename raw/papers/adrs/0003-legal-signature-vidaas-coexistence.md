@@ -1,4 +1,4 @@
-<!-- wiki-ingest: synced from clinicagestor/docs/adr/0003-legal-signature-vidaas-coexistence.md at 2026-05-09T17:45:44.517Z — edit upstream in monorepo, not here -->
+<!-- wiki-ingest: synced from clinicagestor/docs/adr/0003-legal-signature-vidaas-coexistence.md at 2026-05-09T17:47:18.995Z — edit upstream in monorepo, not here -->
 
 # ADR-0003 — Assinatura legal (VIDAAS) convivendo com encerramento no sistema
 

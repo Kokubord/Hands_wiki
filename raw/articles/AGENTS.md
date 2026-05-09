@@ -1,4 +1,4 @@
-<!-- wiki-ingest: synced from AGENTS.md at 2026-05-09T17:45:44.501Z — edit upstream in monorepo, not here -->
+<!-- wiki-ingest: synced from AGENTS.md at 2026-05-09T17:47:18.981Z — edit upstream in monorepo, not here -->
 
 # AGENTS.md — guia para agentes LLM e contribuidores deste repositório
 
@@ -17,6 +17,7 @@ Este ficheiro é o **primeiro ponto de contacto** para qualquer contribuidor —
 │   └── README.md
 ├── specs/001-clinicagestor-platform/   # Especificação formal (spec.md, plan.md, tasks.md)
 ├── wiki_hands/            # Submodule Git → Kokubord/Hands_wiki (vault Obsidian Markdown)
+├── scripts/wiki-ingest/   # `npm run wiki:ingest` — espelho determinístico para o vault
 ├── .cursor/
 │   ├── rules/             # Regras carregadas automaticamente em cada sessão de agente
 │   └── commands/

@@ -1,4 +1,4 @@
-<!-- wiki-ingest: synced from HANDOVER-METHODOLOGY.md at 2026-05-09T17:45:44.513Z — edit upstream in monorepo, not here -->
+<!-- wiki-ingest: synced from HANDOVER-METHODOLOGY.md at 2026-05-09T17:47:18.990Z — edit upstream in monorepo, not here -->
 
 # HANDOVER Methodology — documento-semente auto-contido
 

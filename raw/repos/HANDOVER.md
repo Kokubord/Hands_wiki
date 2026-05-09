@@ -1,4 +1,4 @@
-<!-- wiki-ingest: synced from clinicagestor/HANDOVER.md at 2026-05-09T17:45:44.498Z — edit upstream in monorepo, not here -->
+<!-- wiki-ingest: synced from clinicagestor/HANDOVER.md at 2026-05-09T17:47:18.979Z — edit upstream in monorepo, not here -->
 
 # HANDOVER — estado vivo do projecto ClinicaGestor
 
@@ -174,7 +174,7 @@
 - Repositório GitHub **`Kokubord/Hands_wiki`** (`git@github.com:Kokubord/Hands_wiki.git`): primeiro push do vault; **`wiki_hands/`** no monorepo Hands passou a **git submodule**. Ficheiro **`.gitignore`** no vault ignora estado local do Obsidian (`workspace.json`, cache). **`.gitmodules`** na raiz do Hands aponta para esse remote.
 - **2026-05-09 (layout):** árvore do vault **alinhada ao modelo adaptado** (`raw/articles`, `raw/specs`, …, `wiki/topics`, …): symlinks na raiz de `raw/` **removidos**; **cópias** canónicas (HANDOVER, spec/plan/tasks, AGENTS, schema Prisma, checklist de requisitos, etc.) nas pastas correctas; **`claude.md`** na raiz; **`wiki/topics`** com stubs (Agenda, Assinatura, Financeiro, Prontuário). Submodule no Hands actualizado para **`3edb423`**.
 - **Nota:** clones **só** do `Hands_wiki` no Windows leem **ficheiros reais** em `raw/` (sem symlinks); refrescar cópias quando o monorepo mudar (`wiki-ingest` ou novo commit no submodule).
-- Próximo passo técnico: implementar o script de ingest e documentar `npm run wiki:sync` (ou equivalente).
+- **2026-05-09 (ingest):** fluxo **determinístico** implementado — `npm run wiki:ingest` na raiz Hands (`scripts/wiki-ingest/sync-wiki-ingest.ts`, manifest [`scripts/wiki-mirror.manifest.json`](../scripts/wiki-mirror.manifest.json)): espelha ficheiros para `wiki_hands/raw/`, ADRs para `raw/papers/adrs/`, gera `wiki/sources/ingest-catalog.md`, `wiki/queries/ingest-status.md`, actualiza bloco em `index.md`, append em `log.md`. Obsidian: apenas refresh local após `git pull` (sem API universal de plugins).
 
 ### Menu Cadastro — papel «profissional» (`slug === profissional`) — 2026-04-29
 
