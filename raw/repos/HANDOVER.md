@@ -1,4 +1,4 @@
-<!-- wiki-ingest: synced from clinicagestor/HANDOVER.md at 2026-05-09T18:04:15.339Z — edit upstream in monorepo, not here -->
+<!-- wiki-ingest: synced from clinicagestor/HANDOVER.md at 2026-05-09T18:04:46.897Z — edit upstream in monorepo, not here -->
 
 # HANDOVER — estado vivo do projecto ClinicaGestor
 

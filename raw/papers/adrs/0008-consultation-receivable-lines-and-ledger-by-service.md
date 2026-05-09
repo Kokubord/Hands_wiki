@@ -1,4 +1,4 @@
-<!-- wiki-ingest: synced from clinicagestor/docs/adr/0008-consultation-receivable-lines-and-ledger-by-service.md at 2026-05-09T18:04:15.347Z — edit upstream in monorepo, not here -->
+<!-- wiki-ingest: synced from clinicagestor/docs/adr/0008-consultation-receivable-lines-and-ledger-by-service.md at 2026-05-09T18:04:46.904Z — edit upstream in monorepo, not here -->
 
 # ADR-0008 — Contas a receber (`ConsultationReceivableLine`) e livro por serviço
 

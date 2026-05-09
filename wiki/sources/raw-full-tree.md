@@ -1,4 +1,4 @@
-<!-- wiki-ingest generated 2026-05-09T18:04:15.353Z -->
+<!-- wiki-ingest generated 2026-05-09T18:04:46.912Z -->
 
 # Árvore completa de `raw/` (24 ficheiros)
 

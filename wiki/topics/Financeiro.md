@@ -6,12 +6,17 @@ Tópico — CRL, livro, recebíveis, contas a pagar, planeamento. Fontes: `raw/s
 
 ### Fontes em `raw/` (ingest automático)
 
-**3** ficheiro(ns) associados por regras de caminho/nome.
+**8** ficheiro(ns): classificação por nome/caminho **+** referências transversais (spec, HANDOVER, requirements quando existem).
 
 Ver também: [[wiki/sources/raw-full-tree|Árvore completa raw]].
 
 - [[raw/papers/adrs/0008-consultation-receivable-lines-and-ledger-by-service|0008-consultation-receivable-lines-and-ledger-by-service.md]]
 - [[raw/papers/adrs/0009-receivable-installment-operational-reconciliation|0009-receivable-installment-operational-reconciliation.md]]
 - [[raw/papers/adrs/0011-supplier-and-accounts-payable-lines|0011-supplier-and-accounts-payable-lines.md]]
+- [[raw/repos/HANDOVER|HANDOVER.md]]
+- [[raw/requirements/requirements|requirements.md]]
+- [[raw/specs/plan|plan.md]]
+- [[raw/specs/spec|spec.md]]
+- [[raw/specs/tasks|tasks.md]]
 
 <!-- WIKI_INGEST_TOPIC_END -->

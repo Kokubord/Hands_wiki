@@ -1,4 +1,4 @@
-<!-- wiki-ingest generated 2026-05-09T18:04:15.354Z -->
+<!-- wiki-ingest generated 2026-05-09T18:04:46.913Z -->
 
 # Concepts (por pasta em `raw/`)
 

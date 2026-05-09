@@ -1,4 +1,4 @@
-<!-- wiki-ingest: synced from AGENTS.md at 2026-05-09T18:04:15.341Z — edit upstream in monorepo, not here -->
+<!-- wiki-ingest: synced from AGENTS.md at 2026-05-09T18:04:46.899Z — edit upstream in monorepo, not here -->
 
 # AGENTS.md — guia para agentes LLM e contribuidores deste repositório
 
