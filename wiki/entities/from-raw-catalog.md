@@ -1,4 +1,4 @@
-<!-- wiki-ingest generated 2026-05-09T18:04:46.913Z -->
+<!-- wiki-ingest generated 2026-05-09T18:07:01.172Z -->
 
 # Entities (ligações a artefactos em `raw/`)
 

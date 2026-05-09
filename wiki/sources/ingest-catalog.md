@@ -1,8 +1,8 @@
-<!-- wiki-ingest generated 2026-05-09T18:04:46.915Z -->
+<!-- wiki-ingest generated 2026-05-09T18:07:01.176Z -->
 
 # Catálogo do ingest (determinístico)
 
-Última corrida: **2026-05-09T18:04:46.915Z**. Manifest: **9** · ADRs copiados: **10** · **Total ficheiros em `raw/`: 24**
+Última corrida: **2026-05-09T18:07:01.176Z**. Manifest: **9** · ADRs copiados: **10** · **Total ficheiros em `raw/`: 24**
 
 - [[wiki/sources/raw-full-tree|Árvore completa de raw/ (sem excepções)]]
 - [[wiki/concepts/from-raw-catalog|Concepts por pasta]]

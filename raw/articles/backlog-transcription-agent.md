@@ -1,4 +1,4 @@
-<!-- wiki-ingest: synced from specs/001-clinicagestor-platform/backlog-transcription-agent.md at 2026-05-09T18:04:46.901Z — edit upstream in monorepo, not here -->
+<!-- wiki-ingest: synced from specs/001-clinicagestor-platform/backlog-transcription-agent.md at 2026-05-09T18:07:01.146Z — edit upstream in monorepo, not here -->
 
 # Backlog — agente de transcrição / NLP (ClinicaGestor)
 

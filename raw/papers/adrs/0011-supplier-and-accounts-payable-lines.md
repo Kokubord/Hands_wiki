@@ -1,4 +1,4 @@
-<!-- wiki-ingest: synced from clinicagestor/docs/adr/0011-supplier-and-accounts-payable-lines.md at 2026-05-09T18:04:46.905Z — edit upstream in monorepo, not here -->
+<!-- wiki-ingest: synced from clinicagestor/docs/adr/0011-supplier-and-accounts-payable-lines.md at 2026-05-09T18:07:01.159Z — edit upstream in monorepo, not here -->
 
 # ADR-0011 — Fornecedor e linhas operacionais de Contas a pagar
 

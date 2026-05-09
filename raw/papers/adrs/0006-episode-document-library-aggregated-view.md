@@ -1,4 +1,4 @@
-<!-- wiki-ingest: synced from clinicagestor/docs/adr/0006-episode-document-library-aggregated-view.md at 2026-05-09T18:04:46.903Z — edit upstream in monorepo, not here -->
+<!-- wiki-ingest: synced from clinicagestor/docs/adr/0006-episode-document-library-aggregated-view.md at 2026-05-09T18:07:01.155Z — edit upstream in monorepo, not here -->
 
 # ADR-0006 — «Imagens e anexos do episódio» como biblioteca agregada de documentos clínicos
 
