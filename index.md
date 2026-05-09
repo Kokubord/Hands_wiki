@@ -1,18 +1,25 @@
-# ClinicaGestor Wiki
+# ClinicaGestor Wiki — índice
 
-Bem-vindo ao **Knowledge Base** do ClinicaGestor.
+Vault **Hands_wiki**: camadas **`raw/`** (fontes) e **`wiki/`** (síntese). Regras: **`GROK.md`** (PT) · **`claude.md`** (agentes em inglês).
 
-## Mapas de Conteúdo
+## Mapas
+
+### Tópicos (`wiki/topics`)
 
 - [[wiki/topics/Financeiro|Financeiro]]
-- [[wiki/topics/Prontuario|Prontuário e Episódio]]
+- [[wiki/topics/Prontuario|Prontuário]]
 - [[wiki/topics/Agenda|Agenda]]
-- [[wiki/topics/Assinatura|Assinatura Digital]]
+- [[wiki/topics/Assinatura|Assinatura digital]]
 
-## Como usar
+### Pastas PKM
 
-- Coloque novos documentos na pasta `raw/`
-- Peça ao Grok para processar: `"Ingest novo plano"`
-- Use o **Graph View** do Obsidian para navegar
+- `wiki/concepts/` · `wiki/entities/` · `wiki/queries/` · `wiki/sources/`
 
-Última atualização: Maio 2026
+### Fontes (`raw`)
+
+- [[raw/repos/HANDOVER|HANDOVER (espelho)]]
+- [[raw/specs/spec|Spec]] · [[raw/specs/plan|Plan]] · [[raw/specs/tasks|Tasks]]
+- [[raw/articles/AGENTS|AGENTS]]
+- [[raw/papers/HANDOVER-METHODOLOGY|HANDOVER-METHODOLOGY]]
+
+Última actualização: 2026-05

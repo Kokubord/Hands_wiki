@@ -2,11 +2,12 @@
 
 Este vault Obsidian é mantido principalmente pelo Grok.
 
-## Estrutura
+## Estrutura (adaptada ao ClinicaGestor)
 
-- `raw/` → Documentos originais do projeto
-- `wiki/` → Wiki organizada e atualizada
-- `assets/` → Imagens para uso nas páginas
+- **`raw/`** — Fontes por tipo: `articles/`, `papers/`, `repos/`, `requirements/`, `scripts/`, `specs/`, mais `assets/`, `datasets/`, `notes/`, `transcripts/` (ver `raw/README.md`).
+- **`wiki/`** — Síntese: `concepts/`, `entities/`, `queries/`, `sources/`, `topics/`.
+- **`assets/`** — Media na raiz do vault (diagramas, imagens).
+- **`GROK.md`** · **`claude.md`** — Regras (PT / EN).
 
 ## Como contribuir
 

@@ -29,7 +29,7 @@ Inspirado na ideia *raw / wiki* (fontes → síntese), mas **mais granular** par
 | **`wiki/`** | Wiki compilada: `concepts/`, `entities/`, `queries/`, `sources/`, `topics/` (Agenda, Assinatura, Financeiro, Prontuário, …). |
 | **`assets/`** (raiz) | Media e diagramas para leitura na wiki. |
 | **`raw/assets/`** | Brutos / anexos ligados a fontes em `raw/`. |
-| Raiz | `index.md`, `log.md`, `README`, este **`GROK.md`**. |
+| Raiz | `index.md`, `log.md`, `README`, **`GROK.md`**, **`claude.md`** (schema para Claude Code, inglês). |
 
 ### Duas faixas de ingestão (compatível com estratégia Karpathy + pipeline Hands)
 

@@ -1,0 +1,1651 @@
+// ClinicaGestor — F1: tenant + financeiro (livro em schema; writes conforme ADR-0001).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // Migrações (Prisma Migrate) precisam de ligação directa; no Neon use host sem "-pooler" / porta 5432.
+  // Em Docker local ou Postgres sem pooler, pode ser igual a DATABASE_URL.
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+enum LedgerEntryKind {
+  RECEIPT
+  ADJUSTMENT
+  /// Despesa operacional (contas a pagar) — valor tipicamente negativo no livro.
+  EXPENSE
+}
+
+/// Agrupamento para fluxo de caixa / relatórios (DESPESAS FIXAS vs VARIÁVEIS).
+enum ExpenseRubricGroup {
+  FIXED
+  VARIABLE
+  OTHER
+}
+
+/// Subtipo de linha RECEIPT quando o registo vem do fluxo de recebimento na marcação (F2 parcial / ADR-0001).
+enum LedgerReceiptCategory {
+  /// Valor que integra o adiantamento (`Consultation.advancePaidMinor`) e reduz o saldo em aberto.
+  ADVANCE
+  /// Outros recebimentos (parcela, quitação sem ser só adiantamento, etc.) — F2-01 pode alargar regras.
+  PAYMENT_OTHER
+}
+
+/// Forma de pagamento declarada no registo de recebimento (marcação).
+enum LedgerReceiptPaymentForm {
+  AT_SIGHT
+  INSTALLMENTS
+}
+
+/// Meio de pagamento declarado no registo de recebimento (marcação).
+enum LedgerReceiptPaymentMethod {
+  CASH
+  PIX
+  DEBIT_CARD
+  CREDIT_CARD
+}
+
+/// Estados mínimos da consulta na agenda (FR-021) — alinhar UI e painel (F1-09).
+enum ConsultationStatus {
+  SCHEDULED
+  CONFIRMED
+  WAITING
+  /// Gravação do episódio iniciada — «em atendimento» (FR-026, coerência agenda FR-028).
+  IN_ATTENDANCE
+  NO_SHOW
+  ATTENDED
+  CANCELLED
+  /// Paciente ainda só em cadastro provisório; no dia da marcação (UTC) passa automaticamente a este estado até concluir o cadastro na empresa.
+  PATIENT_REGISTRATION_PENDING
+}
+
+enum ConsultationIntegrationKind {
+  AGENDA
+  CLINICAL_RECORD_ONLY
+}
+
+/// Janelas semanais de disponibilidade na agenda por profissional (`ClinicMember`).
+enum MemberAgendaWindowKind {
+  WORKING
+  BLOCK
+}
+
+enum ConsultationBillingMode {
+  PARTICULAR
+  CONVENIO
+}
+
+/// Estado de recebimento / cobrança da marcação (ortogonal ao estado clínico da agenda).
+enum ConsultationPaymentStatus {
+  OPEN
+  INSTALLMENT
+  PAID
+}
+
+/// Pedido na lista de espera da clínica (F1-08, FR-047) — sem slot fixo.
+enum WaitlistEntryStatus {
+  OPEN
+  FULFILLED
+  CANCELLED
+}
+
+/// Cadastro provisório de paciente ligado a uma marcação (evita duplicar `Patient` antes do dia da consulta).
+enum ProvisionalPatientRegistrationStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
+/// Política de precificação da clínica (F1-07): o gestor escolhe uma das duas.
+enum ClinicPricingPolicy {
+  /// Mesmo serviço no mesmo CL = mesmo preço para todos os profissionais desse CL.
+  BY_PROFIT_CENTER_UNIFIED
+  /// Preço por CL e por profissional (serviços podem distinguir-se por membro).
+  BY_PROFIT_CENTER_AND_MEMBER
+}
+
+/// Escopo do catálogo clínico (F1-10): por empresa ou partilhado por contratante.
+enum ClinicalCatalogScope {
+  COMPANY
+  CONTRACTOR
+}
+
+/// Contratante / grupo comercial: agrupa uma ou mais empresas jurídicas (`Company`). Regras de convite
+/// de equipa e (futuro) partilha de dados cruzam apenas dentro do mesmo `contractorId`.
+model Contractor {
+  id                      String                   @id @default(cuid())
+  name                    String
+  /// Código interno estável, único no sistema (facturação, integrações).
+  code                    String                   @unique
+  /// CPF (11) ou CNPJ (14) só dígitos; opcional.
+  taxId                   String?
+  phone                   String?
+  planStartedAt           DateTime?
+  planExpiresAt           DateTime?
+  /// Quando false ou plano expirado, UI mostra situação inactiva.
+  planActive              Boolean                  @default(true)
+  /// Define se o catálogo clínico é por empresa ou partilhado no grupo (contratante).
+  clinicalCatalogScope    ClinicalCatalogScope     @default(COMPANY)
+  /// Fuso horário IANA (ex.: "America/Sao_Paulo") aplicado a todas as empresas e clínicas do grupo.
+  /// Fonte de verdade de exibição civil; todos os campos `startsAt`/`endsAt`/timestamps continuam em UTC real.
+  /// Configurável em `Configurações → Empresas e unidades → Contratante`. Default alinhado com `DEFAULT_APP_TIMEZONE`.
+  timezone                String                   @default("America/Sao_Paulo")
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  companies               Company[]
+  segments                Segment[]
+  medications             MedicationCatalog[]
+  procedures              ProcedureCatalog[]
+  clinicalCatalogSyncRuns ClinicalCatalogSyncRun[]
+}
+
+model Company {
+  id                              String                           @id @default(cuid())
+  contractorId                    String
+  contractor                      Contractor                       @relation(fields: [contractorId], references: [id], onDelete: Restrict)
+  name                            String
+  /// CNPJ da sede (14 dígitos); opcional.
+  cnpj                            String?
+  phone                           String?
+  address                         String?
+  /// Código interno estável, único no sistema (integrações, ETL).
+  code                            String                           @unique
+  createdAt                       DateTime                         @default(now())
+  updatedAt                       DateTime                         @updatedAt
+  clinics                         Clinic[]
+  patients                        Patient[]
+  auditLogs                       AuditLog[]
+  services                        CompanyService[]
+  convenios                       Convenio[]
+  medications                     MedicationCatalog[]
+  procedures                      ProcedureCatalog[]
+  clinicalCatalogSyncRuns         ClinicalCatalogSyncRun[]
+  errorReports                    ErrorReport[]
+  provisionalPatientRegistrations ProvisionalPatientRegistration[]
+  ledgerEntries                   LedgerEntry[]
+  consultationReceivableLines     ConsultationReceivableLine[]
+  costCenters                     CostCenter[]
+  expenseRubrics                  ExpenseRubric[]
+  expenseBudgetLines              ExpenseBudgetLine[]
+  suppliers                       Supplier[]
+  accountsPayableLines            AccountsPayableLine[]
+
+  @@index([contractorId])
+}
+
+enum ClinicalCatalogSyncStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+/// Segmento por contratante; cada centro de lucro referencia um segmento para classificação no livro.
+model Segment {
+  id           String     @id @default(cuid())
+  contractorId String
+  contractor   Contractor @relation(fields: [contractorId], references: [id], onDelete: Cascade)
+  name         String
+  /// Código interno estável (sigla), único por contratante — sempre **caixa alta** (`parseAnalyticalMasterCode`).
+  code         String
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  profitCenters ProfitCenter[]
+  ledgerEntries LedgerEntry[]
+
+  @@unique([contractorId, name])
+  @@unique([contractorId, code])
+  @@index([contractorId])
+}
+
+model Clinic {
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String
+  cnpj      String?
+  phone     String?
+  address   String?
+  /// Código interno estável, único por empresa.
+  code      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Precificação: unificada por CL vs. por profissional dentro do CL.
+  pricingPolicy                     ClinicPricingPolicy @default(BY_PROFIT_CENTER_UNIFIED)
+  /// Clicar num horário vazio na agenda abre nova marcação com início sugerido (se a permissão agenda.edit existir).
+  agendaClickToCreate               Boolean             @default(true)
+  /// Arrastar marcações na agenda para reagendar manualmente.
+  agendaDragReschedule              Boolean             @default(true)
+  /// Quando false, não é permitido criar novas marcações (API e UI); reagendar/editar horário existente segue agendaAllowPastSlots / agendaAllowFutureSlots.
+  agendaSchedulingEnabled           Boolean             @default(true)
+  /// Permitir início de marcação no passado (relativamente ao relógio do servidor ao gravar).
+  agendaAllowPastSlots              Boolean             @default(false)
+  /// Permitir início de marcação no futuro.
+  agendaAllowFutureSlots            Boolean             @default(true)
+  /// Ícones de estado (emoji) nos cartões da agenda — pagamento, presença, etc.
+  agendaShowConsultationStatusIcons Boolean             @default(true)
+  /// Quando true, o painel pode mostrar o fluxo de assinatura legal (VIDAAS) em preparação; não activa integração por si.
+  legalSignatureVidaasEnabled       Boolean             @default(false)
+  /// Quando true, o painel mostra o fluxo Lacuna Web PKI (Rest PKI) — QR Code mobile principal + extensão desktop.
+  legalSignatureLacunaEnabled       Boolean             @default(false)
+
+  members                         ClinicMember[]
+  staffPasswordInvites            StaffPasswordInvite[]
+  clinicRoles                     ClinicRole[]
+  consultations                   Consultation[]
+  ledgerEntries                   LedgerEntry[]
+  auditLogs                       AuditLog[]
+  plannedPrices                   PlannedServicePrice[]
+  waitlistEntries                 WaitlistEntry[]
+  errorReports                    ErrorReport[]
+  provisionalPatientRegistrations ProvisionalPatientRegistration[]
+  consultationReceivableLines     ConsultationReceivableLine[]
+  accountsPayableLines            AccountsPayableLine[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+}
+
+/// Reporte de erro / pedido de suporte humano (F1-14 / FR-056 parcial), sempre âncorado em Empresa + clínica.
+model ErrorReport {
+  id             String   @id @default(cuid())
+  companyId      String
+  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  clinicId       String
+  clinic         Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  reporterUserId String
+  reporter       User     @relation("ErrorReportReporter", fields: [reporterUserId], references: [id], onDelete: Restrict)
+  subject        String
+  details        String
+  contextPath    String?
+  createdAt      DateTime @default(now())
+
+  @@index([clinicId, createdAt])
+  @@index([companyId, createdAt])
+}
+
+/// Catálogo de medicamentos (F1-10 / FR-031), com escopo configurável.
+model MedicationCatalog {
+  id              String      @id @default(cuid())
+  companyId       String?
+  company         Company?    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contractorId    String?
+  contractor      Contractor? @relation(fields: [contractorId], references: [id], onDelete: Cascade)
+  /// Código interno estável por escopo.
+  code            String
+  name            String
+  dosage          String?
+  presentation    String?
+  laboratory      String?
+  classification  String?
+  /// Posologia padrão sugerida ao prescrever este medicamento (FR-031, fase 1).
+  /// Pré-preenche o campo "Posologia" do modal de prescrição quando o item é adicionado;
+  /// o médico pode aceitar ou editar. Texto livre por agora; estruturado fica para fase 2.
+  defaultPosology String?
+  active          Boolean     @default(true)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  prescriptionItems PrescriptionItem[]
+
+  @@unique([companyId, code])
+  @@unique([contractorId, code])
+  @@index([companyId, active])
+  @@index([companyId, name])
+  @@index([contractorId, active])
+  @@index([contractorId, name])
+}
+
+/// Catálogo de procedimentos/exames (incl. TUSS), com escopo configurável.
+model ProcedureCatalog {
+  id           String      @id @default(cuid())
+  companyId    String?
+  company      Company?    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contractorId String?
+  contractor   Contractor? @relation(fields: [contractorId], references: [id], onDelete: Cascade)
+  /// Código TUSS ou código interno equivalente.
+  tussCode     String
+  name         String
+  active       Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  externalProcedureRequestItems ConsultationExternalProcedureRequestItem[]
+
+  @@unique([companyId, tussCode])
+  @@unique([contractorId, tussCode])
+  @@index([companyId, active])
+  @@index([companyId, name])
+  @@index([contractorId, active])
+  @@index([contractorId, name])
+}
+
+/// CID-10 (DATASUS): referência única na base — importação em lote via `npm run cid10:import`.
+/// O episódio grava texto livre (código + descrição); a pesquisa usa esta tabela.
+model Cid10Diagnosis {
+  id          String   @id @default(cuid())
+  /// Código exibido (ex.: A00.0 ou A09 para categoria de três caracteres).
+  code        String   @unique
+  description String
+  descrAbrev  String?
+  classif     String?
+  restrSexo   String?
+  causaObito  String?
+  source      String   @default("DATASUS_CID10_V2008")
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([description])
+  @@index([active])
+}
+
+/// Centro de custo por empresa — ligado a um centro de lucro (analítico / rateio); partilhável por várias clínicas da mesma empresa.
+model CostCenter {
+  id             String       @id @default(cuid())
+  companyId      String
+  company        Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  profitCenterId String
+  profitCenter   ProfitCenter @relation(fields: [profitCenterId], references: [id], onDelete: Restrict)
+  name           String
+  /// Código interno estável, único por empresa — sempre **caixa alta** (`parseAnalyticalMasterCode`).
+  code           String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  ledgerEntries        LedgerEntry[]
+  expenseBudgetLines   ExpenseBudgetLine[]
+  accountsPayableLines AccountsPayableLine[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@index([profitCenterId])
+}
+
+/// Rúbrica de despesa por empresa (F2-02 / FR-040).
+model ExpenseRubric {
+  id                   String                @id @default(cuid())
+  companyId            String
+  company              Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  /// Sempre **caixa alta** (`parseAnalyticalMasterCode`); único com `companyId`.
+  code                 String
+  name                 String
+  active               Boolean               @default(true)
+  group                ExpenseRubricGroup    @default(OTHER)
+  /// Dia civil do mês (1–31) para `plannedDueDate` das linhas de planeamento; limitado ao último dia do mês na UI.
+  defaultPaymentDay    Int                   @default(10)
+  /// Se verdadeiro, ao gravar um valor no mês M na grelha, replica só para M…12 do exercício.
+  planningRecurring    Boolean               @default(false)
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  ledgerEntries        LedgerEntry[]
+  expenseBudgetLines   ExpenseBudgetLine[]
+  accountsPayableLines AccountsPayableLine[]
+
+  @@unique([companyId, code])
+  @@index([companyId, active])
+}
+
+/// Planeamento de despesa por vencimento — uma linha por compromisso (água dia 10, salário dia 5, …).
+model ExpenseBudgetLine {
+  id                 String        @id @default(cuid())
+  companyId          String
+  company            Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  costCenterId       String
+  costCenter         CostCenter    @relation(fields: [costCenterId], references: [id], onDelete: Cascade)
+  expenseRubricId    String
+  expenseRubric      ExpenseRubric @relation(fields: [expenseRubricId], references: [id], onDelete: Restrict)
+  plannedDueDate     DateTime
+  plannedAmountMinor Int
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  fulfillingLedgerEntry LedgerEntry?
+
+  @@index([companyId, plannedDueDate])
+  @@index([costCenterId, plannedDueDate])
+}
+
+/// Catálogo mestre de serviços por empresa — nome canónico e `slug` único (evita duplicar grafias).
+model CompanyService {
+  id            String   @id @default(cuid())
+  companyId     String
+  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  /// Código interno estável (ex.: TUSS, sigla interna), único por empresa — além do `slug`.
+  code          String
+  /// Nome oficial aprovado pela gestão.
+  name          String
+  /// Identificador normalizado único por empresa (`slugify` do nome na criação).
+  slug          String
+  description   String?
+  /// Cor hex na agenda (ex.: `#fecaca`); se null, usa paleta derivada do `id`.
+  calendarColor String?
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  plannedPrices     PlannedServicePrice[]
+  consultations     Consultation[]
+  consultationItems ConsultationItem[]
+  waitlistEntries   WaitlistEntry[]
+  ledgerEntries     LedgerEntry[]
+
+  @@unique([companyId, slug])
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@index([companyId, active])
+}
+
+/// Append-only (FR-005): sem updates/deletes pela aplicação.
+model AuditLog {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  clinicId    String?
+  clinic      Clinic?  @relation(fields: [clinicId], references: [id], onDelete: SetNull)
+  segmentId   String?
+  actorUserId String?
+  actorUser   User?    @relation("UserAuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  actorKind   String   @default("USER")
+  action      String
+  entityType  String?
+  entityId    String?
+  metadata    Json?
+  ipAddress   String?
+  userAgent   String?
+
+  @@index([companyId, createdAt])
+  @@index([clinicId, createdAt])
+  @@index([actorUserId, createdAt])
+}
+
+/// Histórico de sincronização manual/automática do catálogo clínico.
+model ClinicalCatalogSyncRun {
+  id                     String                    @id @default(cuid())
+  createdAt              DateTime                  @default(now())
+  updatedAt              DateTime                  @updatedAt
+  scope                  ClinicalCatalogScope
+  status                 ClinicalCatalogSyncStatus @default(RUNNING)
+  companyId              String?
+  company                Company?                  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contractorId           String?
+  contractor             Contractor?               @relation(fields: [contractorId], references: [id], onDelete: Cascade)
+  actorUserId            String?
+  actorUser              User?                     @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  dryRun                 Boolean                   @default(false)
+  deactivateMissing      Boolean                   @default(false)
+  medicationsUpserted    Int                       @default(0)
+  proceduresUpserted     Int                       @default(0)
+  medicationsDeactivated Int                       @default(0)
+  proceduresDeactivated  Int                       @default(0)
+  cid10Upserted          Int                       @default(0)
+  cid10Deactivated       Int                       @default(0)
+  /// Quando true, esta execução refere-se só ao catálogo CID-10 (página Diagnósticos).
+  cid10Only              Boolean                   @default(false)
+  errorMessage           String?
+
+  @@index([scope, createdAt])
+  @@index([companyId, createdAt])
+  @@index([contractorId, createdAt])
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  cpf          String?
+  phone        String?
+  address      String?
+  councilCode  String?
+  passwordHash String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships                            ClinicMember[]
+  passwordResetTokens                    PasswordResetToken[]
+  loginOtpChallenges                     LoginOtpChallenge[]
+  auditLogsAsActor                       AuditLog[]                             @relation("UserAuditActor")
+  clinicalCatalogSyncRuns                ClinicalCatalogSyncRun[]
+  staffInvitesPending                    StaffPasswordInvite[]                  @relation("StaffInviteUser")
+  staffInvitesCreated                    StaffPasswordInvite[]                  @relation("StaffInviteCreator")
+  signedConsultationEpisodes             ConsultationEpisode[]                  @relation("EpisodeSignedByUser")
+  consultationEpisodeRevisions           ConsultationEpisodeRevision[]
+  externalProcedureRequestsCreated       ConsultationExternalProcedureRequest[] @relation("ExternalProcedureRequestCreator")
+  externalProcedureRequestTemplatesOwned ExternalProcedureRequestTemplate[]     @relation("ExternalProcedureRequestTemplateOwner")
+  prescriptionTemplatesOwned             PrescriptionTemplate[]                 @relation("PrescriptionTemplateOwner")
+  documentAttestationTemplatesOwned      DocumentAttestationTemplate[]          @relation("DocumentAttestationTemplateOwner")
+  consultationFieldChanges               ConsultationFieldChangeLog[]           @relation("ConsultationFieldChangeActor")
+  errorReportsSubmitted                  ErrorReport[]                          @relation("ErrorReportReporter")
+  prescriptionsCreated                   Prescription[]                         @relation("PrescriptionCreator")
+  prescriptionsLocked                    Prescription[]                         @relation("PrescriptionLocker")
+}
+
+/// Pedido de redefinição de palavra-passe iniciado pelo próprio utilizador (`/auth/forgot`); token por email.
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  /// SHA-256 hex do token enviado por email (nunca guardar o token em claro).
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+enum DocumentAttestationTemplateType {
+  MEDICAL_CERTIFICATE
+  MEDICAL_CERTIFICATE_COMPANION
+  ATTENDANCE_DECLARATION
+  COMPANION_DECLARATION
+  /// Texto livre sem modelo fixo; modelos pessoais por profissional.
+  BLANK_DOCUMENT
+}
+
+/// Convite para o profissional definir a palavra-passe (link por email); substitui senha definida na recepção.
+model StaffPasswordInvite {
+  id              String    @id @default(cuid())
+  /// SHA-256 hex do token enviado por email (nunca guardar o token em claro).
+  tokenHash       String    @unique
+  userId          String
+  user            User      @relation("StaffInviteUser", fields: [userId], references: [id], onDelete: Cascade)
+  clinicId        String
+  clinic          Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  createdByUserId String?
+  createdBy       User?     @relation("StaffInviteCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  expiresAt       DateTime
+  consumedAt      DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([userId])
+  @@index([clinicId])
+}
+
+/// OTP de segundo factor após password válido (FR-007); um desafio ativo por utilizador.
+model LoginOtpChallenge {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+/// Papel nomeado por clínica (FR-009); `slug` identifica templates sistema (gestor, atendente, profissional).
+model ClinicRole {
+  id        String   @id @default(cuid())
+  clinicId  String
+  clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  name      String
+  slug      String
+  isSystem  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  permissions ClinicRolePermission[]
+  members     ClinicMember[]
+
+  @@unique([clinicId, slug])
+  @@index([clinicId])
+}
+
+/// Catálogo global de capacidades atómicas (FR-009).
+model Permission {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  label       String
+  description String?
+  module      String
+  createdAt   DateTime @default(now())
+
+  roleLinks ClinicRolePermission[]
+}
+
+/// Matriz Papel × Permission por clínica (FR-009); negar por omissão — só `allowed: true` concede.
+model ClinicRolePermission {
+  id           String     @id @default(cuid())
+  clinicRoleId String
+  clinicRole   ClinicRole @relation(fields: [clinicRoleId], references: [id], onDelete: Cascade)
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  allowed      Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([clinicRoleId, permissionId])
+  @@index([permissionId])
+}
+
+model ClinicMember {
+  id                        String        @id @default(cuid())
+  clinicId                  String
+  clinic                    Clinic        @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  userId                    String
+  user                      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Código técnico do profissional nesta unidade (único por clínica).
+  code                      String
+  /// RBAC v3 (2026-04-20): único eixo de perfil na clínica são os `ClinicRole`
+  /// sistema (`sistema`, `gestor`, `atendente`, `profissional`). O campo legacy
+  /// `role` (enum `UserRole` com OWNER/ADMIN/STAFF) foi removido; o "dono" de
+  /// uma clínica é, operacionalmente, um utilizador com `ClinicMember` `gestor`
+  /// em todas as clínicas da(s) empresa(s) sob gestão.
+  clinicRoleId              String
+  clinicRole                ClinicRole    @relation(fields: [clinicRoleId], references: [id], onDelete: Restrict)
+  joinedAt                  DateTime      @default(now())
+  /// Único centro de lucro do profissional nesta clínica (agenda + muro financeiro quando aplicável).
+  profitCenterId            String?
+  profitCenter              ProfitCenter? @relation(fields: [profitCenterId], references: [id], onDelete: SetNull)
+  /// Duração padrão das consultas (minutos): grelha de horários na agenda e valor inicial ao marcar.
+  defaultAppointmentMinutes Int           @default(20)
+
+  reportAccessLinks        ClinicMemberReportAccess[]
+  authorizedProfitCenters  ClinicMemberAuthorizedProfitCenter[]
+  plannedServicePrices     PlannedServicePrice[]
+  consultations            Consultation[]
+  episodesStarted          ConsultationEpisode[]                @relation("EpisodeStartedByClinicMember")
+  preferredWaitlistEntries WaitlistEntry[]                      @relation("WaitlistPreferredMember")
+  agendaWindows            ClinicMemberAgendaWindow[]
+
+  @@unique([clinicId, userId])
+  @@unique([clinicId, code])
+  @@index([userId])
+  @@index([clinicRoleId])
+  @@index([profitCenterId])
+}
+
+/// Horário de atendimento e bloqueios recorrentes (semana civil no fuso do contratante) — ver `lib/agenda/member-agenda-availability.ts`.
+model ClinicMemberAgendaWindow {
+  id             String                 @id @default(cuid())
+  clinicMemberId String
+  clinicMember   ClinicMember           @relation(fields: [clinicMemberId], references: [id], onDelete: Cascade)
+  /// 0 = domingo … 6 = sábado (alinhado a `daysOfWeek` do FullCalendar).
+  weekday        Int
+  /// Minutos desde 00:00 do dia civil (inclusive).
+  startMinutes   Int
+  /// Minutos desde 00:00 do dia civil (exclusivo): intervalo `[startMinutes, endMinutes)`.
+  endMinutes     Int
+  kind           MemberAgendaWindowKind
+  label          String?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  @@index([clinicMemberId, weekday, kind])
+}
+
+/// **Authorization Object — Centro de Lucro (RBAC v2 / 2026-04-16).**
+///
+/// Lista N:N de centros de lucro autorizados ao profissional NESTA clínica. Coexiste com
+/// `ClinicMember.profitCenterId` (= CL "primário", usado hoje em agenda + muro de relatórios).
+/// O CL primário deve ser implicitamente um dos autorizados.
+///
+/// Uso runtime planeado (parte 2 do AO, ainda NÃO implementado): filtrar relatórios financeiros
+/// (`/dashboard/reports`), agenda e ledger por *qualquer* dos `ProfitCenter` aqui listados — em
+/// vez de apenas o primário. Esta tabela existe já para que a UI de cadastro de Profissional
+/// possa receber a configuração e um back-fill copiar o primário para todos os membros existentes.
+model ClinicMemberAuthorizedProfitCenter {
+  id             String       @id @default(cuid())
+  clinicMemberId String
+  clinicMember   ClinicMember @relation(fields: [clinicMemberId], references: [id], onDelete: Cascade)
+  profitCenterId String
+  profitCenter   ProfitCenter @relation(fields: [profitCenterId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+
+  @@unique([clinicMemberId, profitCenterId])
+  @@index([profitCenterId])
+}
+
+/// Catálogo estável de relatórios financeiros; acesso explícito por membro (ex.: profissional).
+model ReportDefinition {
+  code        String   @id
+  label       String
+  description String?
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  memberAccessLinks ClinicMemberReportAccess[]
+}
+
+model ClinicMemberReportAccess {
+  id             String           @id @default(cuid())
+  clinicMemberId String
+  clinicMember   ClinicMember     @relation(fields: [clinicMemberId], references: [id], onDelete: Cascade)
+  reportCode     String
+  report         ReportDefinition @relation(fields: [reportCode], references: [code], onDelete: Cascade)
+  createdAt      DateTime         @default(now())
+
+  @@unique([clinicMemberId, reportCode])
+  @@index([reportCode])
+}
+
+/// Convênio por empresa (F1-07, FR-035); válido para todas as clínicas da empresa.
+model Convenio {
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String
+  /// CNPJ da operadora (14 dígitos) opcional.
+  cnpj      String?
+  phone     String?
+  address   String?
+  /// Código interno estável, único por empresa.
+  code      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  plannedPrices PlannedServicePrice[]
+  consultations Consultation[]
+  patients      Patient[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+}
+
+/// Preço planeado: serviço do catálogo empresa + particular/convênio + CL (F1-07).
+model PlannedServicePrice {
+  id               String         @id @default(cuid())
+  clinicId         String
+  clinic           Clinic         @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  companyServiceId String
+  companyService   CompanyService @relation(fields: [companyServiceId], references: [id], onDelete: Restrict)
+  /// Chave estável: `svc` + ids — ver `lib/pricing/scope-key.ts`.
+  scopeKey         String
+  convenioId       String?
+  convenio         Convenio?      @relation(fields: [convenioId], references: [id], onDelete: Restrict)
+  profitCenterId   String
+  profitCenter     ProfitCenter   @relation(fields: [profitCenterId], references: [id], onDelete: Cascade)
+  /// Só em `BY_PROFIT_CENTER_AND_MEMBER`; sempre null em política unificada por CL.
+  clinicMemberId   String?
+  clinicMember     ClinicMember?  @relation(fields: [clinicMemberId], references: [id], onDelete: SetNull)
+  amountMinor      Int
+  currency         String         @default("BRL")
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@unique([clinicId, scopeKey])
+  @@index([convenioId])
+  @@index([profitCenterId])
+  @@index([clinicMemberId])
+  @@index([companyServiceId])
+}
+
+model ProfitCenter {
+  id        String   @id @default(cuid())
+  name      String
+  /// Código interno estável (sigla), único por segmento — sempre **caixa alta** (`parseAnalyticalMasterCode`).
+  code      String
+  /// Segmento do contratante (obrigatório) — ao gravar no livro, copia-se para LedgerEntry.segmentId (F2).
+  segmentId String
+  segment   Segment  @relation(fields: [segmentId], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ledgerEntries           LedgerEntry[]
+  clinicMembers           ClinicMember[]
+  authorizedClinicMembers ClinicMemberAuthorizedProfitCenter[]
+  plannedServicePrices    PlannedServicePrice[]
+  consultations           Consultation[]
+  costCenters             CostCenter[]
+
+  @@unique([segmentId, code])
+  @@index([segmentId])
+}
+
+/// Fornecedor por empresa — código interno F… (mesma regra de geração que paciente, prefixo F).
+model Supplier {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  /// Código interno automático, único por empresa (ex. F0000000001).
+  code        String
+  /// Nome / razão social.
+  legalName   String
+  description String?
+  /// CPF (11) ou CNPJ (14) só dígitos; opcional.
+  taxId       String?
+  phone       String?
+  address     String?
+  /// Pessoa de contacto.
+  contactName String?
+  email       String?
+  notes       String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  ledgerEntries        LedgerEntry[]
+  accountsPayableLines AccountsPayableLine[]
+
+  @@unique([companyId, code])
+  @@index([companyId, active])
+  @@index([companyId, legalName])
+}
+
+/// Categoria operacional de contas a pagar (adiantamento vs pagamento de fatura).
+enum AccountsPayableCategory {
+  ADVANCE
+  PAYMENT
+}
+
+/// Forma de quitação planeado (à vista vs parcelas) — espelha a CRL.
+enum AccountsPayablePaymentForm {
+  AT_SIGHT
+  INSTALLMENTS
+}
+
+/// Linha operacional de contas a pagar (caixa / conciliação) — paridade com `ConsultationReceivableLine`.
+model AccountsPayableLine {
+  id                                 String                      @id @default(cuid())
+  companyId                          String
+  company                            Company                     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  /// Unidade operacional; null = movimento consolidado à empresa sem clínica no movimento.
+  clinicId                           String?
+  clinic                             Clinic?                     @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  supplierId                         String
+  supplier                           Supplier                    @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  costCenterId                       String?
+  costCenter                         CostCenter?                 @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
+  expenseRubricId                    String?
+  expenseRubric                      ExpenseRubric?              @relation(fields: [expenseRubricId], references: [id], onDelete: SetNull)
+  /// Sequência por empresa (exibição como código da linha CAP).
+  companyAccountsPayableLineSequence Int
+  /// Montante em minor (positivo = saída de caixa comprometida / paga).
+  amountMinor                        Int
+  currency                           String                      @default("BRL")
+  category                           AccountsPayableCategory
+  paymentForm                        AccountsPayablePaymentForm?
+  paymentMethod                      LedgerReceiptPaymentMethod?
+  installmentCount                   Int?
+  installmentNumber                  Int?
+  dueDate                            DateTime?
+  installmentReconciledAt            DateTime?
+  /// Quando preenchido, esta linha liquida o compromisso no livro (`EXPENSE`).
+  ledgerEntryId                      String?                     @unique
+  ledgerEntry                        LedgerEntry?                @relation("LedgerEntryAccountsPayableOrigin", fields: [ledgerEntryId], references: [id], onDelete: SetNull)
+  /// `ClinicMember.code` do utilizador que registou (mesmo padrão da CRL).
+  userId                             String
+  postingGroupId                     String?
+  reversesAccountsPayableLineId      String?
+  reversalTarget                     AccountsPayableLine?        @relation("AccountsPayableLineReversal", fields: [reversesAccountsPayableLineId], references: [id], onDelete: SetNull)
+  reversalLines                      AccountsPayableLine[]       @relation("AccountsPayableLineReversal")
+  createdAt                          DateTime                    @default(now())
+
+  @@unique([companyId, companyAccountsPayableLineSequence])
+  @@index([companyId, createdAt])
+  @@index([clinicId, createdAt])
+  @@index([supplierId])
+  @@index([installmentReconciledAt])
+  @@index([reversesAccountsPayableLineId])
+}
+
+/// Cadastro mestre por Empresa (FR-046); consultas referenciam o mesmo paciente em qualquer clínica.
+model Patient {
+  id                    String    @id @default(cuid())
+  companyId             String
+  company               Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  /// Código interno estável, único por empresa.
+  code                  String
+  fullName              String
+  /// CPF só dígitos (11) ou null; unicidade por Empresa quando preenchido.
+  cpf                   String?
+  email                 String?
+  phone                 String?
+  birthDate             DateTime?
+  convenioId            String?
+  convenio              Convenio? @relation(fields: [convenioId], references: [id], onDelete: SetNull)
+  convenioCardNumber    String?
+  /// Consentimento base para tratamento de dados de saúde (LGPD — jornada F1).
+  consentTreatment      Boolean   @default(false)
+  /// Comunicações (ex.: lembretes, marketing) — opt-in.
+  consentCommunications Boolean   @default(false)
+  notes                 String?
+  /// Chave no object storage (mesmo padrão que `ConsultationEpisodeAttachment.fileUrl`); imagem JPEG/PNG/WebP.
+  avatarFileUrl         String?
+  avatarMimeType        String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  consultations                    Consultation[]
+  waitlistEntries                  WaitlistEntry[]
+  provisionalRegistrationsResolved ProvisionalPatientRegistration[] @relation("ProvisionalResolvedPatient")
+
+  @@unique([companyId, code])
+  @@unique([companyId, cpf])
+  @@index([companyId])
+  @@index([companyId, fullName])
+  @@index([convenioId])
+}
+
+/// Paciente ainda não promovido a `Patient`: criado na marcação e finalizado no dia da consulta (ou cancelado).
+model ProvisionalPatientRegistration {
+  id                 String                               @id @default(cuid())
+  companyId          String
+  company            Company                              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  clinicId           String
+  clinic             Clinic                               @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  fullName           String
+  phone              String?
+  email              String?
+  /// CPF só dígitos (11) ou null — mesma convenção que `Patient.cpf`.
+  cpf                String?
+  /// Número da marcação na clínica (FR-020), igual ao da `Consultation` — identifica o cadastro provisório.
+  consultationNumber Int
+  /// Id da consulta (gravado no mesmo fluxo transaccional após `Consultation.create`; obrigatório após gravar).
+  consultationId     String?                              @unique
+  status             ProvisionalPatientRegistrationStatus @default(PENDING)
+  resolvedPatientId  String?
+  resolvedPatient    Patient?                             @relation("ProvisionalResolvedPatient", fields: [resolvedPatientId], references: [id], onDelete: SetNull)
+  completedAt        DateTime?
+  createdAt          DateTime                             @default(now())
+  updatedAt          DateTime                             @updatedAt
+
+  consultation Consultation?
+
+  @@unique([clinicId, consultationNumber])
+  @@index([companyId, status])
+  @@index([clinicId])
+}
+
+/// Marcação na clínica (F1-08 / FR-017, FR-020, FR-047) — âncora operacional para o painel (F1-09).
+/// Chave natural de rastreio: o par `(clinicId, consultationNumber)` é único na base e identifica o ciclo
+/// de atendimento na unidade; o livro (`LedgerEntry.consultationId`) liga lançamentos a esta marcação.
+model Consultation {
+  id                               String                          @id @default(cuid())
+  clinicId                         String
+  clinic                           Clinic                          @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  /// Número sequencial por clínica (FR-020), único em conjunto com `clinicId` — ex.: «#42» na agenda.
+  consultationNumber               Int
+  /// Código público FR-020 (8 dígitos), sequencial por clínica.
+  consultationCode                 String
+  /// Paciente definitivo; mutuamente exclusivo com `provisionalPatientRegistrationId`.
+  patientId                        String?
+  patient                          Patient?                        @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  provisionalPatientRegistrationId String?                         @unique
+  provisionalPatientRegistration   ProvisionalPatientRegistration? @relation(fields: [provisionalPatientRegistrationId], references: [id], onDelete: Restrict)
+  clinicMemberId                   String
+  clinicMember                     ClinicMember                    @relation(fields: [clinicMemberId], references: [id], onDelete: Restrict)
+  profitCenterId                   String
+  profitCenter                     ProfitCenter                    @relation(fields: [profitCenterId], references: [id], onDelete: Restrict)
+  companyServiceId                 String
+  companyService                   CompanyService                  @relation(fields: [companyServiceId], references: [id], onDelete: Restrict)
+  status                           ConsultationStatus              @default(SCHEDULED)
+  /// Diferencia marcação da agenda de «episódio avulso» (só prontuário, fora da agenda).
+  integrationKind                  ConsultationIntegrationKind     @default(AGENDA)
+  /// Código contábil legível para cobrança excepcional de episódio avulso (ex.: EA120).
+  exceptionalBillingCode           String?
+  /// Sequência numérica por clínica que origina o código `EA{n}`.
+  exceptionalBillingSequence       Int?
+  /// Recebimento (Recepção): em aberto, parcelado ou pago — mutável via `finance.write`.
+  paymentStatus                    ConsultationPaymentStatus       @default(OPEN)
+  /// Adiantamento já recebido (centavos), descontado do «a receber» quando `paymentStatus` permanece OPEN.
+  advancePaidMinor                 Int                             @default(0)
+  billingMode                      ConsultationBillingMode         @default(PARTICULAR)
+  convenioId                       String?
+  convenio                         Convenio?                       @relation(fields: [convenioId], references: [id], onDelete: SetNull)
+  startsAt                         DateTime
+  endsAt                           DateTime
+  /// Notas gerais preenchidas no agendamento.
+  bookingNotes                     String?
+  /// Informação de triagem preenchida no agendamento.
+  triageNotes                      String?
+  notes                            String?
+  createdAt                        DateTime                        @default(now())
+  updatedAt                        DateTime                        @updatedAt
+
+  ledgerEntries             LedgerEntry[]
+  receivableLines           ConsultationReceivableLine[]
+  items                     ConsultationItem[]
+  episode                   ConsultationEpisode?
+  waitlistFulfillment       WaitlistEntry?                         @relation("WaitlistFulfilledConsultation")
+  externalProcedureRequests ConsultationExternalProcedureRequest[]
+  fieldChangeLogs           ConsultationFieldChangeLog[]
+  prescriptions             Prescription[]
+
+  @@unique([clinicId, consultationNumber])
+  @@unique([clinicId, consultationCode])
+  @@unique([clinicId, exceptionalBillingCode])
+  @@unique([clinicId, exceptionalBillingSequence])
+  @@index([clinicId, startsAt])
+  @@index([patientId])
+  @@index([clinicMemberId])
+}
+
+/// Episódio clínico associado à consulta (F1-11): timer, notas e anexos base.
+/// Assinatura (F1-12 / FR-033): `signedAt` implica imutabilidade (FR-027) para utilizadores de negócio.
+model ConsultationEpisode {
+  id                         String                                 @id @default(cuid())
+  consultationId             String                                 @unique
+  consultation               Consultation                           @relation(fields: [consultationId], references: [id], onDelete: Cascade)
+  notes                      String?
+  chiefComplaint             String?
+  currentIllnessHistory      String?
+  historyAndAntecedents      String?
+  /// Antecedentes pessoais por categoria (resumo lateral + timeline).
+  antecedentsSurgical        String?
+  antecedentsFamily          String?
+  antecedentsHabits          String?
+  antecedentsAllergies       String?
+  antecedentsMedications     String?
+  physicalExam               String?
+  bmiWeightKg                Float?
+  bmiHeightCm                Float?
+  bmiValue                   Float?
+  diagnosis                  String?
+  conduct                    String?
+  timerRunning               Boolean                                @default(false)
+  timerStartedAt             DateTime?
+  elapsedSeconds             Int                                    @default(0)
+  startedAt                  DateTime?
+  endedAt                    DateTime?
+  signedAt                   DateTime?
+  signedByUserId             String?
+  signedByUser               User?                                  @relation("EpisodeSignedByUser", fields: [signedByUserId], references: [id], onDelete: SetNull)
+  /// Assinatura legal (PAdES / fornecedor externo), independente do encerramento interno (`signedAt`).
+  legalSignatureStatus       LegalSignatureStatus                   @default(NOT_REQUESTED)
+  legalSignatureProvider     LegalSignatureProvider                 @default(NONE)
+  legalSignatureCompletedAt  DateTime?
+  legalSignatureMetadata     Json?
+  legalSignatureLastError    String?
+  /// Notas livres após encerramento ou assinatura digital do episódio (não faz parte do roteiro assinado).
+  complementaryInformation   String?
+  /// Membro da clínica que iniciou o episódio (atendimento); dados clínicos ficam associados a este profissional.
+  startedByClinicMemberId    String?
+  startedByClinicMember      ClinicMember?                          @relation("EpisodeStartedByClinicMember", fields: [startedByClinicMemberId], references: [id], onDelete: SetNull)
+  /// «Encerrar sem bloquear agora»: atendimento deixa de contar como «consulta activa» na barra lateral e liberta bloqueios operacionais, sem gravar `endedAt` (episódio continua por finalizar).
+  activeAttendanceReleasedAt DateTime?
+  /// Utilizador escolheu «Encerrar, bloquear e assinar com certificado»: permite preparar PAdES antes de gravar `endedAt` no cronómetro (cabeçalho só muda após assinatura legal concluída).
+  legalFinalizeIntentAt      DateTime?
+  createdAt                  DateTime                               @default(now())
+  updatedAt                  DateTime                               @updatedAt
+  attachments                ConsultationEpisodeAttachment[]
+  timerEvents                ConsultationEpisodeTimerEvent[]
+  revisions                  ConsultationEpisodeRevision[]
+  externalProcedureRequests  ConsultationExternalProcedureRequest[]
+  prescriptions              Prescription[]
+
+  @@index([consultationId, createdAt])
+  @@index([signedAt])
+  @@index([legalSignatureStatus])
+  @@index([updatedAt])
+}
+
+enum LegalSignatureStatus {
+  NOT_REQUESTED
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum LegalSignatureProvider {
+  NONE
+  VIDAAS
+  LACUNA
+}
+
+/// Versões do roteiro do episódio; mantém histórico completo sem poluir a timeline (UI exibe só a versão mais recente).
+model ConsultationEpisodeRevision {
+  id                     String              @id @default(cuid())
+  episodeId              String
+  episode                ConsultationEpisode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  actorUserId            String?
+  actorUser              User?               @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  notes                  String?
+  chiefComplaint         String?
+  currentIllnessHistory  String?
+  historyAndAntecedents  String?
+  antecedentsSurgical    String?
+  antecedentsFamily      String?
+  antecedentsHabits      String?
+  antecedentsAllergies   String?
+  antecedentsMedications String?
+  physicalExam           String?
+  bmiWeightKg            Float?
+  bmiHeightCm            Float?
+  bmiValue               Float?
+  diagnosis              String?
+  conduct                String?
+  createdAt              DateTime            @default(now())
+
+  @@index([episodeId, createdAt])
+  @@index([actorUserId, createdAt])
+}
+
+enum ConsultationEpisodeTimerEventKind {
+  START
+  STOP
+}
+
+/// Marcos do cronómetro do episódio (F1-11): start/stop com acumulado.
+model ConsultationEpisodeTimerEvent {
+  id             String                            @id @default(cuid())
+  episodeId      String
+  episode        ConsultationEpisode               @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  kind           ConsultationEpisodeTimerEventKind
+  happenedAt     DateTime                          @default(now())
+  elapsedSeconds Int                               @default(0)
+
+  @@index([episodeId, happenedAt])
+}
+
+/// Anexo do episódio (F1-11): metadados + URL/chave em storage stub.
+model ConsultationEpisodeAttachment {
+  id                        String                              @id @default(cuid())
+  episodeId                 String
+  episode                   ConsultationEpisode                 @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  /// Quando o anexo foi gerado a partir de uma prescrição (`source = PRESCRIPTION_LOCKED`
+  /// ou `PRESCRIPTION_PREVIEW`), guarda o id da prescrição para permitir cleanup explícito
+  /// na reabertura/eliminação. `SetNull` garante que apagar a prescrição não cascateia
+  /// para o anexo (caso o caller queira preservar o documento histórico).
+  prescriptionId            String?
+  prescription              Prescription?                       @relation("PrescriptionAttachments", fields: [prescriptionId], references: [id], onDelete: SetNull)
+  fileName                  String
+  fileUrl                   String
+  mimeType                  String?
+  sizeBytes                 Int?
+  /// Notas / comentários clínicos associados ao ficheiro (editável no painel).
+  comment                   String?
+  source                    ConsultationEpisodeAttachmentSource @default(USER_UPLOAD)
+  /// Assinatura digital PAdES (ex.: Lacuna Web PKI) aplicada sobre o PDF deste anexo —
+  /// independente da assinatura legal do roteiro do episódio (atestados/documentos avulsos).
+  legalSignatureStatus      LegalSignatureStatus                @default(NOT_REQUESTED)
+  legalSignatureProvider    LegalSignatureProvider              @default(NONE)
+  legalSignatureCompletedAt DateTime?
+  legalSignatureMetadata    Json?
+  legalSignatureLastError   String?
+  createdAt                 DateTime                            @default(now())
+
+  @@index([episodeId, createdAt])
+  @@index([prescriptionId])
+}
+
+enum ConsultationEpisodeAttachmentSource {
+  USER_UPLOAD
+  LEGAL_SIGNATURE_VIDAAS
+  LEGAL_SIGNATURE_LACUNA
+  /// PDF de prescrição médica congelada (status LOCKED) — anexado automaticamente
+  /// ao bloquear a receita (assinatura individual ou cascata por encerramento do episódio).
+  PRESCRIPTION_LOCKED
+  /// Pré-visualização de prescrição em DRAFT — anexada ao "Finalizar" para impressão imediata,
+  /// pode ser substituída quando o médico voltar a editar.
+  PRESCRIPTION_PREVIEW
+}
+
+/// Itens da consulta (FR-023): base para planejado × realizado no painel.
+/// Em F1, persiste o planejado (quantidade + valor unitário/linha); realizado financeiro fica para F2.
+/// `companyServiceId` opcional liga o item a um serviço cadastrado em Definições · Serviços
+/// (origem dos exames/procedimentos «No local»); itens manuais ou legacy ficam com null.
+model ConsultationItem {
+  id                 String          @id @default(cuid())
+  consultationId     String
+  consultation       Consultation    @relation(fields: [consultationId], references: [id], onDelete: Cascade)
+  /// Origem do preço/serviço cadastrado (null = item manual ou legacy).
+  companyServiceId   String?
+  companyService     CompanyService? @relation(fields: [companyServiceId], references: [id], onDelete: SetNull)
+  /// Ordem estável para renderização no painel.
+  lineOrder          Int
+  description        String
+  quantity           Int             @default(1)
+  unitAmountMinor    Int
+  /// Total planeado da linha (quantidade × valor unitário no momento do registo).
+  plannedAmountMinor Int
+  currency           String          @default("BRL")
+  /// Linha ainda em aberto após recebimento «Pago» antes de «Atendido» (novos serviços).
+  lineReceiptOpen    Boolean         @default(false)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  ledgerEntries      LedgerEntry[]
+
+  @@index([consultationId, lineOrder])
+  @@index([companyServiceId])
+}
+
+/// Movimento de caixa por marcação (sub-ledger / contas a receber): uma linha por entrada real (à vista ou parcela).
+model ConsultationReceivableLine {
+  id                                  String                       @id @default(cuid())
+  consultationId                      String
+  consultation                        Consultation                 @relation(fields: [consultationId], references: [id], onDelete: Cascade)
+  /// Unidade da marcação (`Consultation.clinicId`): cópia na escritura para relatórios e filtros por clínica.
+  clinicId                            String
+  clinic                              Clinic                       @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  /// Na origem «recebimento na marcação»: `Consultation` → `clinic` → empresa. Copiado na escritura (auditoria / relatórios por empresa).
+  companyId                           String
+  company                             Company                      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  /// Número sequencial por **empresa** (`companyId`), no mesmo âmbito que `LedgerEntry.companyLedgerSequence`; contador CRL separado do livro. Exibição: `formatCompanyLedgerSequence` (sem prefixo).
+  companyReceivableLineSequence       Int
+  amountMinor                         Int
+  currency                            String                       @default("BRL")
+  receiptCategory                     LedgerReceiptCategory
+  receiptPaymentForm                  LedgerReceiptPaymentForm?
+  receiptPaymentMethod                LedgerReceiptPaymentMethod?
+  receiptInstallmentCount             Int?
+  receiptInstallmentNumber            Int?
+  dueDate                             DateTime?
+  /// Quando true em linhas `ADVANCE`, a quitação total deve disparar lançamento integral no livro por serviço.
+  pendingConsultationLedgerSettlement Boolean                      @default(false)
+  /// Conciliação operacional (extrato / convênio): independente do estado de pagamento da consulta.
+  installmentReconciledAt             DateTime?
+  userId                              String
+  createdAt                           DateTime                     @default(now())
+  /// Agrupa CRL + livro criados no mesmo POST de recebimento (UUID); estorno conjunto.
+  receiptPostingGroupId               String?
+  /// Linha CRL de estorno (valor tipicamente negativo); aponta ao registo original anulado.
+  reversesReceivableLineId            String?
+  reversalTarget                      ConsultationReceivableLine?  @relation("ConsultationReceivableLineReversal", fields: [reversesReceivableLineId], references: [id], onDelete: SetNull)
+  reversalLines                       ConsultationReceivableLine[] @relation("ConsultationReceivableLineReversal")
+
+  @@unique([companyId, companyReceivableLineSequence])
+  @@index([consultationId, createdAt])
+  @@index([clinicId, createdAt])
+  @@index([companyId, createdAt])
+  @@index([installmentReconciledAt])
+  @@index([receiptPostingGroupId])
+  @@index([consultationId, receiptPostingGroupId])
+  @@index([reversesReceivableLineId])
+}
+
+/// Pedido externo de exames/procedimentos: documento que o médico imprime para o paciente
+/// levar a um laboratório/clínica externa. NÃO entra na cobrança da consulta.
+/// Cada salvamento cria um pedido independente (um episódio pode ter vários pedidos —
+/// ex.: um para laboratório, outro para imagem).
+model ConsultationExternalProcedureRequest {
+  id                        String                  @id @default(cuid())
+  consultationId            String
+  consultation              Consultation            @relation(fields: [consultationId], references: [id], onDelete: Cascade)
+  /// Episódio dono do pedido (associa ao Roteiro/Timeline). Null só em casos legados/restore.
+  episodeId                 String?
+  episode                   ConsultationEpisode?    @relation(fields: [episodeId], references: [id], onDelete: SetNull)
+  /// Indicação clínica livre — sai no PDF junto à lista de exames.
+  clinicalIndication        String?
+  /// Inclui data prevista do exame no documento.
+  includeExamDate           Boolean                 @default(true)
+  /// Data prevista (YYYY-MM-DD); referência visual para o médico/laboratório.
+  examDateYmd               String?
+  /// Modalidade da marcação no momento do pedido (informativo no PDF).
+  billingMode               ConsultationBillingMode @default(PARTICULAR)
+  createdById               String
+  createdBy                 User                    @relation("ExternalProcedureRequestCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt                 DateTime                @default(now())
+  /// Cancelamento lógico — preserva o documento para auditoria/timeline.
+  cancelledAt               DateTime?
+  /// Assinatura digital PAdES no PDF do pedido (independente do roteiro do episódio).
+  legalSignatureStatus      LegalSignatureStatus    @default(NOT_REQUESTED)
+  legalSignatureProvider    LegalSignatureProvider  @default(NONE)
+  legalSignatureCompletedAt DateTime?
+  legalSignatureMetadata    Json?
+  legalSignatureLastError   String?
+
+  items ConsultationExternalProcedureRequestItem[]
+
+  @@index([consultationId, createdAt])
+  @@index([episodeId, createdAt])
+}
+
+/// Linha de pedido externo (FK ao catálogo TUSS, snapshot do código/nome para resiliência).
+model ConsultationExternalProcedureRequestItem {
+  id                 String                               @id @default(cuid())
+  requestId          String
+  request            ConsultationExternalProcedureRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  procedureCatalogId String
+  procedureCatalog   ProcedureCatalog                     @relation(fields: [procedureCatalogId], references: [id], onDelete: Restrict)
+  quantity           Int                                  @default(1)
+  /// Snapshot do código TUSS no momento do pedido (independência face a renomeações).
+  tussCodeSnapshot   String
+  /// Snapshot do nome do procedimento no momento do pedido.
+  nameSnapshot       String
+  lineOrder          Int
+
+  @@index([requestId, lineOrder])
+  @@index([procedureCatalogId])
+}
+
+/// Modelo pessoal do profissional para pedidos externos de exames — permite guardar
+/// um conjunto pré-seleccionado de procedimentos TUSS para aplicar rapidamente em
+/// consultas futuras (chat `8f874d35`, 2026-04-20).
+///
+/// Decisões de modelação:
+///   - **Escopo = utilizador**, não clínica nem empresa: o modelo é pessoal do
+///     profissional (dono). Visível apenas a ele, independentemente da clínica activa.
+///   - Os itens guardam apenas `tussCodeSnapshot` + `nameSnapshot` (e quantidade) —
+///     **não** FK para `ProcedureCatalog`. Na aplicação, resolvemos o código TUSS
+///     dentro do catálogo da clínica activa, o que permite reutilizar o mesmo modelo
+///     em clínicas de empresas/contratantes distintas.
+///   - Sem imutabilidade: o modelo pode ser renomeado e eliminado (soft delete via
+///     `deletedAt`) pelo dono. Quando eliminado, é filtrado nas listagens.
+///   - Não armazena `clinicalIndication` nem `includeExamDate` — esses campos são
+///     relativos ao pedido concreto (paciente + contexto), não ao modelo.
+model ExternalProcedureRequestTemplate {
+  id          String    @id @default(cuid())
+  ownerUserId String
+  owner       User      @relation("ExternalProcedureRequestTemplateOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  name        String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  items ExternalProcedureRequestTemplateItem[]
+
+  @@index([ownerUserId, deletedAt, name])
+}
+
+/// Linha de um modelo de pedido externo — guarda apenas o snapshot TUSS+nome+quantidade.
+model ExternalProcedureRequestTemplateItem {
+  id               String                           @id @default(cuid())
+  templateId       String
+  template         ExternalProcedureRequestTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  /// Código TUSS que será re-resolvido contra o catálogo da clínica activa ao aplicar.
+  tussCodeSnapshot String
+  /// Nome do procedimento no momento da gravação (fallback visual quando o código não existe na clínica activa).
+  nameSnapshot     String
+  quantity         Int                              @default(1)
+  lineOrder        Int
+
+  @@index([templateId, lineOrder])
+}
+
+/// Modelo pessoal de prescrição reutilizável (mesma filosofia dos modelos de exames):
+/// escopo do utilizador (dono), snapshots dos campos e soft-delete.
+model PrescriptionTemplate {
+  id          String    @id @default(cuid())
+  ownerUserId String
+  owner       User      @relation("PrescriptionTemplateOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  name        String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  items PrescriptionTemplateItem[]
+
+  @@index([ownerUserId, deletedAt, name])
+}
+
+/// Linha de modelo de prescrição (snapshot textual + código do medicamento para resolver
+/// contra o catálogo activo quando o modelo é aplicado).
+model PrescriptionTemplateItem {
+  id                     String               @id @default(cuid())
+  templateId             String
+  template               PrescriptionTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  medicationCodeSnapshot String
+  nameSnapshot           String
+  dosageSnapshot         String?
+  presentationSnapshot   String?
+  quantityTextSnapshot   String?
+  posologyTextSnapshot   String
+  lineOrder              Int
+
+  @@index([templateId, lineOrder])
+}
+
+/// Modelo pessoal de texto para documentos/atestados do episódio.
+model DocumentAttestationTemplate {
+  id           String                          @id @default(cuid())
+  ownerUserId  String
+  owner        User                            @relation("DocumentAttestationTemplateOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  documentType DocumentAttestationTemplateType
+  name         String
+  /// Texto-fonte com placeholders (`{{campo}}`) para reconstruir os inputs.
+  templateText String
+  /// Metadados opcionais dos campos (ordem, labels e hints de renderização).
+  fieldsJson   Json?
+  createdAt    DateTime                        @default(now())
+  updatedAt    DateTime                        @updatedAt
+  deletedAt    DateTime?
+
+  @@index([ownerUserId, documentType, deletedAt, name])
+}
+
+/// Log de modificações em campos da consulta — uma linha por alteração relevante.
+/// Suporta auditoria fina (data/hora, utilizador, campo, valor anterior, valor novo)
+/// no botão «Histórico de alterações» do agendamento.
+model ConsultationFieldChangeLog {
+  id              String       @id @default(cuid())
+  consultationId  String
+  consultation    Consultation @relation(fields: [consultationId], references: [id], onDelete: Cascade)
+  /// Tipo da entidade afectada (ex.: "ConsultationItem", "Consultation").
+  entityType      String
+  /// Id da entidade afectada (ex.: id do `ConsultationItem`); igual a `consultationId`
+  /// quando o campo é da própria consulta.
+  entityId        String
+  /// Nome do campo afectado (ex.: "unitAmountMinor", "quantity", "description").
+  fieldName       String
+  /// Valor anterior serializado para string (uniforme para a UI).
+  previousValue   String?
+  /// Valor novo serializado para string.
+  newValue        String?
+  /// Acção de fundo (ex.: "ITEM_CREATED", "ITEM_UPDATED", "ITEM_DELETED", "FIELD_UPDATED").
+  changeKind      String
+  changedByUserId String
+  changedByUser   User         @relation("ConsultationFieldChangeActor", fields: [changedByUserId], references: [id], onDelete: Restrict)
+  createdAt       DateTime     @default(now())
+
+  @@index([consultationId, createdAt])
+  @@index([entityType, entityId, createdAt])
+}
+
+/// Lista de espera por clínica (F1-08); preferência de profissional e serviço opcionais.
+model WaitlistEntry {
+  id                      String              @id @default(cuid())
+  clinicId                String
+  clinic                  Clinic              @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patientId               String
+  patient                 Patient             @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  preferredClinicMemberId String?
+  preferredMember         ClinicMember?       @relation("WaitlistPreferredMember", fields: [preferredClinicMemberId], references: [id], onDelete: SetNull)
+  companyServiceId        String?
+  companyService          CompanyService?     @relation(fields: [companyServiceId], references: [id], onDelete: SetNull)
+  notes                   String?
+  status                  WaitlistEntryStatus @default(OPEN)
+  fulfilledConsultationId String?             @unique
+  fulfilledConsultation   Consultation?       @relation("WaitlistFulfilledConsultation", fields: [fulfilledConsultationId], references: [id], onDelete: SetNull)
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
+
+  @@index([clinicId, status])
+  @@index([clinicId, preferredClinicMemberId, status])
+}
+
+/// Linha do livro financeiro (F1: schema + leitura; mutações só com billingLedgerWritesEnabled).
+model LedgerEntry {
+  id                            String                      @id @default(cuid())
+  /// Na origem «recebimento na marcação»: `Consultation` → `clinic` → `companyId`. Copiado na escritura (auditoria).
+  companyId                     String
+  company                       Company                     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  /// Número sequencial do lançamento no livro desta empresa (1, 2, …). Contador reinicia por empresa.
+  companyLedgerSequence         Int
+  /// Na origem recebimento: `Consultation.clinicId`. Em `EXPENSE` pode ser null se o utilizador não atribuir unidade no lançamento.
+  clinicId                      String?
+  clinic                        Clinic?                     @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  consultationId                String?
+  consultation                  Consultation?               @relation(fields: [consultationId], references: [id], onDelete: SetNull)
+  /// Recebimento na marcação: CL do profissional que atendeu (`episode.startedByClinicMember`), senão do marcado, senão `Consultation.profitCenterId` — ver `resolveReceiptLedgerDimensionsFromConsultation`.
+  profitCenterId                String?
+  profitCenter                  ProfitCenter?               @relation(fields: [profitCenterId], references: [id], onDelete: SetNull)
+  /// Copiado de `ProfitCenter.segmentId` do CL acima no momento da escritura (denormalização para relatórios).
+  segmentId                     String?
+  segment                       Segment?                    @relation(fields: [segmentId], references: [id], onDelete: SetNull)
+  kind                          LedgerEntryKind
+  amountMinor                   Int
+  currency                      String                      @default("BRL")
+  narrative                     String?
+  /// Código do membro na clínica que gravou o movimento (`ClinicMember.code`); não é o CUID do `User`.
+  userId                        String
+  /// Só para `kind = RECEIPT` quando a linha vem do registo de recebimento na marcação.
+  receiptCategory               LedgerReceiptCategory?
+  receiptPaymentForm            LedgerReceiptPaymentForm?
+  receiptPaymentMethod          LedgerReceiptPaymentMethod?
+  /// Só quando `receiptPaymentForm = INSTALLMENTS`; número de parcelas (≥ 2).
+  receiptInstallmentCount       Int?
+  /// Parcela `k` de `receiptInstallmentCount` quando o recebimento parcelado gera várias linhas; null à vista.
+  receiptInstallmentNumber      Int?
+  /// Data de vencimento da parcela (recebimento parcelado); null à vista ou quando não aplicável.
+  /// Para `kind = EXPENSE`: data operacional do caixa (bucket no fluxo projetado).
+  dueDate                       DateTime?
+  /// Centro de custo analítico — sobretudo `EXPENSE`.
+  costCenterId                  String?
+  costCenter                    CostCenter?                 @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
+  expenseRubricId               String?
+  expenseRubric                 ExpenseRubric?              @relation(fields: [expenseRubricId], references: [id], onDelete: SetNull)
+  /// Despesa: fornecedor (obrigatório nas escrituras novas `EXPENSE`).
+  supplierId                    String?
+  supplier                      Supplier?                   @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  /// Quando preenchido, liquida esta linha de planeamento (sem dupla contagem no fluxo).
+  expenseBudgetLineId           String?                     @unique
+  expenseBudgetLine             ExpenseBudgetLine?          @relation(fields: [expenseBudgetLineId], references: [id], onDelete: SetNull)
+  /// Comprovante / nota fiscal (opcional) — `createObjectStorageFromEnv` (stub ou S3).
+  expenseAttachmentStorageKey   String?
+  expenseAttachmentOriginalName String?
+  expenseAttachmentMimeType     String?
+  /// Detalhe analítico: item da consulta (receita por serviço no livro).
+  consultationItemId            String?
+  consultationItem              ConsultationItem?           @relation(fields: [consultationItemId], references: [id], onDelete: SetNull)
+  ledgerCompanyServiceId        String?
+  ledgerCompanyService          CompanyService?             @relation(fields: [ledgerCompanyServiceId], references: [id], onDelete: SetNull)
+  ledgerServiceCodeSnapshot     String?
+  ledgerServiceNameSnapshot     String?
+  /// Mesmo UUID que `ConsultationReceivableLine.receiptPostingGroupId` quando livro + CRL são do mesmo recebimento.
+  receiptPostingGroupId         String?
+  /// Estorno: id (`LedgerEntry.id`) do lançamento original que esta linha anula (valor negativo, `ADJUSTMENT`).
+  reversesLedgerEntryId         String?
+  stornoTarget                  LedgerEntry?                @relation("LedgerEntryStorno", fields: [reversesLedgerEntryId], references: [id], onDelete: SetNull)
+  stornosOfThisLine             LedgerEntry[]               @relation("LedgerEntryStorno")
+  accountsPayableLineOrigin     AccountsPayableLine?        @relation("LedgerEntryAccountsPayableOrigin")
+  createdAt                     DateTime                    @default(now())
+
+  @@unique([companyId, companyLedgerSequence])
+  @@index([clinicId, createdAt])
+  @@index([consultationId])
+  @@index([consultationItemId])
+  @@index([segmentId])
+  @@index([companyId, createdAt])
+  @@index([reversesLedgerEntryId])
+  @@index([consultationId, receiptPostingGroupId])
+  @@index([costCenterId])
+  @@index([expenseRubricId])
+  @@index([supplierId])
+  @@index([kind, clinicId, dueDate])
+}
+
+// =====================================================================================
+// PRESCRIÇÃO MÉDICA — FR-031 (FASE 1)
+// =====================================================================================
+//
+// Padrão arquitectural: imita `ConsultationExternalProcedureRequest` (pedido externo de
+// exames TUSS) — documento imutável-quando-fechado, ligado a episódio + consulta,
+// com items snapshot (medicamento + posologia) e PDF gerado on-demand.
+//
+// Diferenças face a `ConsultationExternalProcedureRequest`:
+//   - Dois estados: `DRAFT` (editável até o profissional concluir) e `LOCKED` (imutável,
+//     pronto para impressão e/ou assinatura digital).
+//   - O lock pode acontecer por duas vias: assinatura individual da prescrição
+//     (Web PKI Lacuna) ou cascata automática quando o episódio é encerrado e assinado.
+//   - Tipo de receituário (`PrescriptionType`) determina o cabeçalho/rodapé do PDF e o
+//     número de vias impressas. Fase 1 só suporta `SIMPLES` e `CONTROLE_ESPECIAL_BRANCA`.
+//
+// Decisão "sem bloqueio mas com auditoria" do Trilho 6 (chat 8f874d35) é respeitada:
+// edições em items DRAFT são livres para qualquer perfil com `prescription.write`; toda
+// mutação grava entrada em `ConsultationFieldChangeLog` para auditoria a-posteriori.
+// =====================================================================================
+
+enum PrescriptionStatus {
+  /// Editável; ainda não congelada. PDF gerado é "PRÉ-VISUALIZAÇÃO" no rodapé.
+  DRAFT
+  /// Congelada (imutável). PDF gerado é o documento legal final, anexado ao episódio.
+  LOCKED
+}
+
+enum PrescriptionType {
+  /// Receituário simples — medicamentos sem controle especial.
+  SIMPLES
+  /// Receituário de controle especial (cor branca) — Portaria 344/98 lista C1, C4, C5,
+  /// retinóides, antiretrovirais (entre outros). Duas vias impressas (paciente + farmácia).
+  CONTROLE_ESPECIAL_BRANCA
+  // Outros tipos (AMARELA A1/A2/A3, AZUL B1/B2, ANTIMICROBIANOS) ficam para fase 2.
+}
+
+enum PrescriptionLockReason {
+  /// Médico clicou explicitamente em "Assinar com certificado" no modal da prescrição.
+  SIGNED_INDIVIDUALLY
+  /// Lock automático em cascata: episódio foi encerrado com assinatura legal completa,
+  /// pelo que todas as DRAFTs deste episódio passam a LOCKED para preservar integridade.
+  EPISODE_SIGNED
+  /// Lock manual sem assinatura: profissional decidiu congelar para imprimir/entregar
+  /// (caso de uso futuro; reservado).
+  MANUAL_NO_SIGNATURE
+}
+
+/// Prescrição médica — documento clínico que o paciente leva à farmácia.
+/// Múltiplas prescrições por episódio (ex.: uma SIMPLES + uma CONTROLE_ESPECIAL_BRANCA).
+model Prescription {
+  id                        String                  @id @default(cuid())
+  consultationId            String
+  consultation              Consultation            @relation(fields: [consultationId], references: [id], onDelete: Cascade)
+  /// Episódio dono — null só em casos legados/restore (alinhado com pedidos externos).
+  episodeId                 String?
+  episode                   ConsultationEpisode?    @relation(fields: [episodeId], references: [id], onDelete: SetNull)
+  type                      PrescriptionType        @default(SIMPLES)
+  status                    PrescriptionStatus      @default(DRAFT)
+  /// Notas livres do médico — sai no rodapé do PDF (ex.: "retornar em 30 dias").
+  notes                     String?
+  createdById               String
+  createdBy                 User                    @relation("PrescriptionCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt                 DateTime                @default(now())
+  updatedAt                 DateTime                @updatedAt
+  /// Lock fields — preenchidos apenas quando `status` transita para LOCKED.
+  lockedAt                  DateTime?
+  lockedByUserId            String?
+  lockedByUser              User?                   @relation("PrescriptionLocker", fields: [lockedByUserId], references: [id], onDelete: SetNull)
+  lockReason                PrescriptionLockReason?
+  /// Assinatura digital ICP-Brasil (Lacuna Web PKI) — opcional. Quando presente,
+  /// `lockedAt` foi causado por `SIGNED_INDIVIDUALLY` ou pode ter sido `EPISODE_SIGNED`
+  /// herdando a assinatura do episódio (campos a null neste segundo caso).
+  legalSignatureStatus      LegalSignatureStatus    @default(NOT_REQUESTED)
+  legalSignatureProvider    LegalSignatureProvider  @default(NONE)
+  legalSignatureCompletedAt DateTime?
+  legalSignatureMetadata    Json?
+  legalSignatureLastError   String?
+
+  items       PrescriptionItem[]
+  attachments ConsultationEpisodeAttachment[] @relation("PrescriptionAttachments")
+
+  @@index([consultationId, createdAt])
+  @@index([episodeId, createdAt])
+  @@index([status])
+}
+
+/// Linha de prescrição — um medicamento por linha, com posologia.
+/// FK ao `MedicationCatalog` (Restrict para preservar cadeia de custódia) + snapshots
+/// dos campos relevantes para o PDF, garantindo que renomear/inactivar o medicamento
+/// no catálogo NÃO altera prescrições já emitidas.
+model PrescriptionItem {
+  id                   String            @id @default(cuid())
+  prescriptionId       String
+  prescription         Prescription      @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  medicationCatalogId  String
+  medicationCatalog    MedicationCatalog @relation(fields: [medicationCatalogId], references: [id], onDelete: Restrict)
+  /// Ordem estável para renderização no PDF e no modal.
+  lineOrder            Int
+  /// Snapshots no momento da criação da linha (não mudam quando catálogo muda).
+  nameSnapshot         String
+  dosageSnapshot       String?
+  presentationSnapshot String?
+  /// Quantidade dispensada (ex.: "1 caixa", "30 comprimidos"). Texto livre por agora.
+  quantityText         String?
+  /// Posologia em texto livre (sai literalmente no PDF). Pré-preenchida a partir de
+  /// `MedicationCatalog.defaultPosology`; o médico edita à vontade.
+  posologyText         String
+  /// Posologia estruturada (modo guiado opcional do modal). Quando preenchida,
+  /// também é renderizada de forma legível pelo helper `posology-format.ts` e o resultado
+  /// é gravado em `posologyText` para o PDF. Estrutura JSONB:
+  ///   { dose?: string, doseUnit?: string, route?: string, frequency?: string,
+  ///     duration?: string, instructions?: string }
+  posologyStructured   Json?
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  @@index([prescriptionId, lineOrder])
+  @@index([medicationCatalogId])
+}
