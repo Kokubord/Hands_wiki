@@ -1,3 +1,5 @@
+<!-- wiki-ingest: synced from specs/001-clinicagestor-platform/checklists/requirements.md at 2026-05-09T17:45:44.514Z — edit upstream in monorepo, not here -->
+
 # Specification Quality Checklist: ClinicaGestor – Plataforma integrada para clínicas
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning  

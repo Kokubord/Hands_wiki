@@ -1,3 +1,5 @@
+<!-- wiki-ingest: synced from clinicagestor/HANDOVER.md at 2026-05-09T17:45:44.498Z — edit upstream in monorepo, not here -->
+
 # HANDOVER — estado vivo do projecto ClinicaGestor
 
 > **Se você é um agente LLM a começar uma sessão neste repositório, LEIA ISTO ANTES DE AGIR.**
@@ -169,8 +171,9 @@
 
 ### Vault Obsidian **Hands_wiki** + submodule — 2026-05-08
 
-- Repositório GitHub **`Kokubord/Hands_wiki`** (`git@github.com:Kokubord/Hands_wiki.git`): primeiro push do vault; **`wiki_hands/`** no monorepo Hands passou a **git submodule** (commit `5486469` no remote `main`). Ficheiro **`.gitignore`** no vault ignora estado local do Obsidian (`workspace.json`, cache). **`.gitmodules`** na raiz do Hands aponta para esse remote.
-- **Nota:** em `wiki_hands/raw/` existem **symlinks** para ficheiros do monorepo — funcionam no WSL com o clone completo do Hands; um clone **só** do repo `Hands_wiki` no Windows deve usar **cópias** geradas pelo futuro `wiki-ingest` (manifesto em [`scripts/wiki-mirror.manifest.yaml`](../scripts/wiki-mirror.manifest.yaml)), não symlinks.
+- Repositório GitHub **`Kokubord/Hands_wiki`** (`git@github.com:Kokubord/Hands_wiki.git`): primeiro push do vault; **`wiki_hands/`** no monorepo Hands passou a **git submodule**. Ficheiro **`.gitignore`** no vault ignora estado local do Obsidian (`workspace.json`, cache). **`.gitmodules`** na raiz do Hands aponta para esse remote.
+- **2026-05-09 (layout):** árvore do vault **alinhada ao modelo adaptado** (`raw/articles`, `raw/specs`, …, `wiki/topics`, …): symlinks na raiz de `raw/` **removidos**; **cópias** canónicas (HANDOVER, spec/plan/tasks, AGENTS, schema Prisma, checklist de requisitos, etc.) nas pastas correctas; **`claude.md`** na raiz; **`wiki/topics`** com stubs (Agenda, Assinatura, Financeiro, Prontuário). Submodule no Hands actualizado para **`3edb423`**.
+- **Nota:** clones **só** do `Hands_wiki` no Windows leem **ficheiros reais** em `raw/` (sem symlinks); refrescar cópias quando o monorepo mudar (`wiki-ingest` ou novo commit no submodule).
 - Próximo passo técnico: implementar o script de ingest e documentar `npm run wiki:sync` (ou equivalente).
 
 ### Menu Cadastro — papel «profissional» (`slug === profissional`) — 2026-04-29

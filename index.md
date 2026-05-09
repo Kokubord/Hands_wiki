@@ -23,3 +23,13 @@ Vault **Hands_wiki**: camadas **`raw/`** (fontes) e **`wiki/`** (síntese). Regr
 - [[raw/papers/HANDOVER-METHODOLOGY|HANDOVER-METHODOLOGY]]
 
 Última actualização: 2026-05
+
+<!-- WIKI_INGEST_BLOCK_START -->
+
+### Último ingest (automático)
+
+- [[wiki/sources/ingest-catalog|Catálogo do ingest]]
+- [[wiki/queries/ingest-status|Estado / comando]]
+- Manifest: **9** · ADRs: **10**
+
+<!-- WIKI_INGEST_BLOCK_END -->

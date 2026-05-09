@@ -1,3 +1,5 @@
+<!-- wiki-ingest: synced from specs/001-clinicagestor-platform/backlog-transcription-agent.md at 2026-05-09T17:45:44.509Z — edit upstream in monorepo, not here -->
+
 # Backlog — agente de transcrição / NLP (ClinicaGestor)
 
 Itens **fora do escopo** das entregas atuais do painel/prontuário, a tratar quando existir pipeline de transcrição ou decisão clínica explícita.

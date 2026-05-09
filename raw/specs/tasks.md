@@ -1,3 +1,5 @@
+<!-- wiki-ingest: synced from specs/001-clinicagestor-platform/tasks.md at 2026-05-09T17:45:44.507Z — edit upstream in monorepo, not here -->
+
 # Tasks — ClinicaGestor (001-clinicagestor-platform)
 
 **Branch**: `001-clinicagestor-platform`  

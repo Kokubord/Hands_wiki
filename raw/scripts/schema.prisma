@@ -1,3 +1,4 @@
+// wiki-ingest: synced from clinicagestor/prisma/schema.prisma at 2026-05-09T17:45:44.516Z
 // ClinicaGestor — F1: tenant + financeiro (livro em schema; writes conforme ADR-0001).
 
 generator client {

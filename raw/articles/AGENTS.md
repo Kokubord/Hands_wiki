@@ -1,3 +1,5 @@
+<!-- wiki-ingest: synced from AGENTS.md at 2026-05-09T17:45:44.501Z — edit upstream in monorepo, not here -->
+
 # AGENTS.md — guia para agentes LLM e contribuidores deste repositório
 
 Este ficheiro é o **primeiro ponto de contacto** para qualquer contribuidor — humano ou LLM — que abre este monorepo. Mantenha-o curto e prático.
