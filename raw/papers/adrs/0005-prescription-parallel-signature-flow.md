@@ -1,4 +1,4 @@
-<!-- wiki-ingest: synced from clinicagestor/docs/adr/0005-prescription-parallel-signature-flow.md at 2026-05-09T17:55:22.748Z — edit upstream in monorepo, not here -->
+<!-- wiki-ingest: synced from clinicagestor/docs/adr/0005-prescription-parallel-signature-flow.md at 2026-05-09T18:04:15.346Z — edit upstream in monorepo, not here -->
 
 # ADR-0005 — Prescrição médica (FR-031, fase 1): assinatura digital como fluxo paralelo ao do episódio
 

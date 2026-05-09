@@ -1,4 +1,4 @@
-<!-- wiki-ingest: synced from clinicagestor/docs/adr/0010-agenda-overlap-encaixes-proximas-jit.md at 2026-05-09T17:55:22.751Z — edit upstream in monorepo, not here -->
+<!-- wiki-ingest: synced from clinicagestor/docs/adr/0010-agenda-overlap-encaixes-proximas-jit.md at 2026-05-09T18:04:15.347Z — edit upstream in monorepo, not here -->
 
 # ADR-0010 — Agenda: encaixes (double-booking), slots livres, «Próximas consultas» e just-in-time
 

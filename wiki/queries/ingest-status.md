@@ -1,12 +1,15 @@
-<!-- wiki-ingest generated 2026-05-09T17:55:22.752Z -->
+<!-- wiki-ingest generated 2026-05-09T18:04:15.357Z -->
 
 # Estado do ingest
 
-Para repetir a sincronização determinística a partir do monorepo Hands:
+- Ficheiros em **raw/**: **24**
+- Tópicos (classificação): Agenda **1** · Assinatura **3** · Financeiro **3** · Prontuário **1**
+
+Para repetir:
 
 ```bash
 cd /path/to/Hands
 npm run wiki:ingest
 ```
 
-Depois: commit no submodule `wiki_hands` e `git pull` no Windows.
+Depois: commit no submodule `wiki_hands`, `git pull` no Windows, **Reload app** no Obsidian.

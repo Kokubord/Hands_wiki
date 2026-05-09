@@ -28,8 +28,9 @@ Vault **Hands_wiki**: camadas **`raw/`** (fontes) e **`wiki/`** (síntese). Regr
 
 ### Último ingest (automático)
 
-- [[wiki/sources/ingest-catalog|Catálogo do ingest]]
-- [[wiki/queries/ingest-status|Estado / comando]]
-- Manifest: **9** · ADRs: **10**
+- [[wiki/sources/ingest-catalog|Catálogo]] · [[wiki/sources/raw-full-tree|Árvore raw (24)]]
+- [[wiki/concepts/from-raw-catalog|Concepts]] · [[wiki/entities/from-raw-catalog|Entities]]
+- [[wiki/queries/ingest-status|Estado]]
+- Manifest: **9** · ADRs: **10** · `raw/`: **24** ficheiros
 
 <!-- WIKI_INGEST_BLOCK_END -->
