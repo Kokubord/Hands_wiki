@@ -1,4 +1,4 @@
-<!-- wiki-ingest: synced from clinicagestor/docs/adr/0009-receivable-installment-operational-reconciliation.md at 2026-05-09T17:47:18.999Z — edit upstream in monorepo, not here -->
+<!-- wiki-ingest: synced from clinicagestor/docs/adr/0009-receivable-installment-operational-reconciliation.md at 2026-05-09T17:55:22.750Z — edit upstream in monorepo, not here -->
 
 # ADR-0009 — Conciliação operacional por parcela (`installmentReconciledAt`)
 

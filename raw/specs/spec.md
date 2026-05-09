@@ -1,4 +1,4 @@
-<!-- wiki-ingest: synced from specs/001-clinicagestor-platform/spec.md at 2026-05-09T17:47:18.984Z — edit upstream in monorepo, not here -->
+<!-- wiki-ingest: synced from specs/001-clinicagestor-platform/spec.md at 2026-05-09T17:55:22.744Z — edit upstream in monorepo, not here -->
 
 # Feature Specification: ClinicaGestor – Plataforma integrada para clínicas
 

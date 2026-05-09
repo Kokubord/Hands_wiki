@@ -1,4 +1,4 @@
-<!-- wiki-ingest: synced from clinicagestor/docs/adr/0002-contractor-multi-company.md at 2026-05-09T17:47:18.994Z — edit upstream in monorepo, not here -->
+<!-- wiki-ingest: synced from clinicagestor/docs/adr/0002-contractor-multi-company.md at 2026-05-09T17:55:22.748Z — edit upstream in monorepo, not here -->
 
 # ADR-0002 — `Contractor` e empresas jurídicas múltiplas
 

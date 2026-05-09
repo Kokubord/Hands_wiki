@@ -1,8 +1,8 @@
-<!-- wiki-ingest generated 2026-05-09T17:47:19.001Z -->
+<!-- wiki-ingest generated 2026-05-09T17:55:22.751Z -->
 
 # Catálogo do ingest (determinístico)
 
-Última corrida: **2026-05-09T17:47:19.001Z**. Entradas manifest: **9** · ADRs: **10**.
+Última corrida: **2026-05-09T17:55:22.751Z**. Entradas manifest: **9** · ADRs: **10**.
 
 ## Espelhos configurados (manifest)
 
